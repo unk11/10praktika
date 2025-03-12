@@ -8,42 +8,51 @@ header('Content-Type: application/json');
 $secret = "6LfGnfIqAAAAALvOB-QhDYsNBAUcdQGN0gpibNcV";
 
 if (!isset($_POST['g-recaptcha-response'])) {
-    error_log("reCAPTCHA response is missing!");
     echo json_encode(["status" => "error", "message" => "Ошибка: reCAPTCHA не была отправлена."]);
     exit;
 }
 
+// Проверяем reCAPTCHA
 $recaptcha = new \ReCaptcha\ReCaptcha($secret);
-$ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'];
-$resp = $recaptcha->verify($_POST['g-recaptcha-response'], $ip);
+$resp = $recaptcha->verify($_POST['g-recaptcha-response'], $_SERVER['REMOTE_ADDR']);
 
 if (!$resp->isSuccess()) {
-    $errors = $resp->getErrorCodes();
-    error_log("reCAPTCHA errors: " . print_r($errors, true));
-    echo json_encode(["status" => "error", "message" => "Ошибка: reCAPTCHA не пройдена."]);
+    // Выводим подробности ошибки для отладки
+    $error_codes = $resp->getErrorCodes();
+    echo json_encode(["status" => "error", "message" => "Ошибка: reCAPTCHA не пройдена.", "error_codes" => $error_codes]);
     exit;
 }
 
+// Получаем данные из формы
 $login = $_POST['login'] ?? '';
 $password = $_POST['password'] ?? '';
 
-$query_user = $mysqli->query("SELECT * FROM `users` WHERE `login`='" . $mysqli->real_escape_string($login) . "' AND `password`='" . $mysqli->real_escape_string($password) . "';");
+// Ищем пользователя в БД
+$query_user = $mysqli->prepare("SELECT * FROM `users` WHERE `login` = ? AND `password` = ?");
+$query_user->bind_param("ss", $login, $password);
+$query_user->execute();
+$result = $query_user->get_result();
 
 $id = -1;
 $role = -1;
 
-while ($user_read = $query_user->fetch_row()) {
+while ($user_read = $result->fetch_row()) {
     $id = $user_read[0];
-    $role = $user_read[3];
+    $role = $user_read[3]; // Поле роли (0 - пользователь, 1 - админ)
 }
 
+// Проверяем, найден ли пользователь
 if ($id == -1) {
     echo json_encode(["status" => "error", "message" => "Ошибка: Неверный логин или пароль."]);
     exit;
 }
 
+// Авторизуем пользователя
 $_SESSION['user'] = $id;
+
+// Определяем, куда перенаправлять
 $redirect_url = ($role == 1) ? "admin.php" : "user.php";
 
+// Возвращаем успешный ответ с URL для редиректа
 echo json_encode(["status" => "success", "redirect" => $redirect_url]);
 ?>
