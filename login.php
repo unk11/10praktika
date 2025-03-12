@@ -65,6 +65,11 @@
 				
 				var _login = document.getElementsByName("_login")[0].value;
 				var _password = document.getElementsByName("_password")[0].value;
+				var captcha = grecaptcha.getResponse();
+				if (!captcha.length) {
+					alert("Вы не прошли проверку reCAPTCHA!");
+					return;
+				}
 				loading.style.display = "block";
 				button.className = "button_diactive";
 				
